@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Emulacja wklejania schowka — demo</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      max-width: 720px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      line-height: 1.5;
+    }
+    h1 { font-size: 1.5rem; }
+    section {
+      border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin: 1rem 0;
+    }
+    label { display: block; font-weight: 600; margin-bottom: 0.35rem; }
+    input[type="text"], textarea, .editable {
+      width: 100%;
+      padding: 0.5rem 0.6rem;
+      border-radius: 8px;
+      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      background: transparent;
+      color: inherit;
+      font: inherit;
+    }
+    textarea { min-height: 80px; resize: vertical; }
+    .editable { min-height: 60px; }
+    .row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.75rem; }
+    button {
+      padding: 0.5rem 0.9rem;
+      border-radius: 8px;
+      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      background: color-mix(in srgb, currentColor 8%, transparent);
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:hover { background: color-mix(in srgb, currentColor 15%, transparent); }
+    .log {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+      background: color-mix(in srgb, currentColor 6%, transparent);
+      border-radius: 8px;
+      padding: 0.75rem;
+      min-height: 3rem;
+    }
+    small { opacity: 0.75; }
+  </style>
+</head>
+<body>
+  <h1>Emulacja wklejania schowka w obecnej karcie</h1>
+  <p><small>
+    Ustaw kursor w wybranym polu, a następnie użyj przycisków poniżej.
+    „Wklej ze schowka” odczytuje prawdziwy schowek systemowy (wymaga zgody
+    przeglądarki i działa na HTTPS lub localhost).
+  </small></p>
+
+  <section>
+    <label for="pole-tekst">Pole tekstowe (input)</label>
+    <input id="pole-tekst" type="text" placeholder="Kliknij tutaj i wklej…" />
+  </section>
+
+  <section>
+    <label for="pole-obszar">Obszar tekstowy (textarea)</label>
+    <textarea id="pole-obszar" placeholder="…albo tutaj…"></textarea>
+  </section>
+
+  <section>
+    <label for="pole-edit">Element edytowalny (contenteditable)</label>
+    <div id="pole-edit" class="editable" contenteditable="true"
+         data-placeholder="…albo w tym miejscu"></div>
+  </section>
+
+  <section>
+    <label for="tekst-do-wklejenia">Tekst do wstawienia (emulacja ręczna)</label>
+    <input id="tekst-do-wklejenia" type="text"
+           value="👋 Wklejony przez emulację!" />
+    <div class="row">
+      <button id="btn-emuluj">Wklej podany tekst</button>
+      <button id="btn-schowek">Wklej ze schowka systemowego</button>
+      <button id="btn-skrot">Włącz przechwytywanie Ctrl/Cmd + V</button>
+    </div>
+  </section>
+
+  <section>
+    <label>Log zdarzeń</label>
+    <div id="log" class="log"></div>
+  </section>
+
+  <script type="module">
+    import { emulatePaste, pasteFromClipboard, installPasteShortcut }
+      from './clipboard-paste.js';
+
+    const logEl = document.getElementById('log');
+    const log = (msg) => {
+      const time = new Date().toLocaleTimeString();
+      logEl.textContent = `[${time}] ${msg}\n` + logEl.textContent;
+    };
+
+    // Zapamiętaj ostatnio aktywne pole edycyjne, bo klik w przycisk
+    // przenosi fokus na sam przycisk.
+    let lastField = null;
+    for (const sel of ['#pole-tekst', '#pole-obszar', '#pole-edit']) {
+      const el = document.querySelector(sel);
+      el.addEventListener('focus', () => { lastField = el; });
+      // Podłącz nasłuchiwacz paste, aby pokazać, że zdarzenie faktycznie leci.
+      el.addEventListener('paste', (e) => {
+        const data = e.clipboardData?.getData('text/plain') ?? '(brak)';
+        log(`Zdarzenie 'paste' na ${sel}: "${data}"`);
+      });
+    }
+
+    document.getElementById('btn-emuluj').addEventListener('click', () => {
+      if (!lastField) return log('Najpierw kliknij w jedno z pól powyżej.');
+      const text = document.getElementById('tekst-do-wklejenia').value;
+      const res = emulatePaste(text, { target: lastField });
+      log(`emulatePaste → wstawiono: ${res.inserted}, anulowane: ${res.defaultPrevented}`);
+    });
+
+    document.getElementById('btn-schowek').addEventListener('click', async () => {
+      if (!lastField) return log('Najpierw kliknij w jedno z pól powyżej.');
+      try {
+        const res = await pasteFromClipboard({ target: lastField });
+        log(`pasteFromClipboard → "${res.text}"`);
+      } catch (err) {
+        log('Błąd: ' + err.message);
+      }
+    });
+
+    let detach = null;
+    document.getElementById('btn-skrot').addEventListener('click', (e) => {
+      if (detach) {
+        detach();
+        detach = null;
+        e.target.textContent = 'Włącz przechwytywanie Ctrl/Cmd + V';
+        log('Przechwytywanie Ctrl/Cmd + V wyłączone.');
+      } else {
+        detach = installPasteShortcut();
+        e.target.textContent = 'Wyłącz przechwytywanie Ctrl/Cmd + V';
+        log('Przechwytywanie Ctrl/Cmd + V włączone — spróbuj wkleić klawiszami.');
+      }
+    });
+  </script>
+</body>
+</html>

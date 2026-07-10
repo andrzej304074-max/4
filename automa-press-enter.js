@@ -1,91 +1,167 @@
 /**
- * automa-press-enter.js
- * ---------------------
- * Emulacja wciśnięcia klawisza ENTER pod blok „JavaScript Code” w Automie.
+ * automa-press-enter.js — wersja 2 („mądry” Enter)
+ * ------------------------------------------------
+ * Emulacja Entera pod blok „JavaScript Code” w Automie, zaprojektowana pod
+ * widżety typu autouzupełnianie, które ignorują prosty syntetyczny Enter.
  *
- * Wysyła pełną sekwencję zdarzeń klawiatury (keydown → keypress → keyup)
- * z klawiszem Enter na wskazanym/aktywnym elemencie, żeby zareagowały
- * nasłuchiwacze strony (np. wyszukiwarki, czaty, formularze SPA).
+ * Co robi mądrzej niż zwykły dispatchEvent:
+ *   1. Wysyła SEKWENCJĘ klawiszy (domyślnie ArrowDown → Enter) z pauzą —
+ *      w autouzupełnianiu Enter wybiera tylko PODŚWIETLONĄ opcję, więc
+ *      najpierw trzeba ją podświetlić strzałką.
+ *   2. Każdy klawisz to pełna sekwencja keydown → keypress → keyup
+ *      z wymuszonymi keyCode/which/charCode (starsze biblioteki czytają
+ *      tylko te pola, a konstruktor bywa je pomija).
+ *   3. Dla pól contenteditable dokłada `beforeinput` (insertParagraph).
+ *   4. PLAN B: gdy strona nie obsłużyła zdarzenia, skrypt szuka w DOM
+ *      wewnętrznych propsów Reacta (__reactProps$ / __reactEventHandlers$)
+ *      i wywołuje handler onKeyDown BEZPOŚREDNIO — z obiektem, w którym
+ *      isTrusted ma wartość true.
+ *   5. Obsługuje shadow DOM przy ustalaniu aktywnego elementu.
  *
- * Ponieważ zdarzenia tworzone skryptowo NIE wykonują akcji domyślnej
- * przeglądarki, skrypt dodatkowo — jeśli strona sama nie obsłużyła Entera:
- *   - dla pola w <form>  → wysyła formularz (requestSubmit, z walidacją),
- *   - dla textarea / contenteditable → wstawia nową linię w miejscu kursora.
- *
- * Użycie: wklej całość do bloku „JavaScript Code”. Pole docelowe wskaż
- * selektorem w SELEKTOR albo zostaw puste i kliknij pole wcześniejszym blokiem.
+ * Ograniczenie nie do obejścia z poziomu JS strony: prawdziwej flagi
+ * isTrusted w zdarzeniu DOM nie da się podrobić. Jeśli strona twardo jej
+ * wymaga, jedyną drogą jest natywny blok Automy „Press key” z włączonym
+ * Debug mode w ustawieniach workflow (klawisze idą wtedy przez Chrome
+ * DevTools Protocol i są nieodróżnialne od fizycznych).
  */
 
 (async () => {
-  const SELEKTOR = '';        // np. '#search' — puste = aktywne pole
-  const WSTAW_NOWA_LINIE = true;  // false = nigdy nie wstawiaj \n
-  const WYSYLAJ_FORMULARZ = true; // false = nie wysyłaj formularza (np. przy autouzupełnianiu!)
+  /* ====== KONFIGURACJA ====== */
+  const SELEKTOR = '';                     // np. '#pole' — puste = aktywny element
+  const KLAWISZE = ['ArrowDown', 'Enter']; // dla autouzupełniania; ['Enter'] gdy bez listy
+  const ODSTEP_MS = 150;                   // pauza między klawiszami (czas dla widżetu)
+  const WYSYLAJ_FORMULARZ = false;         // true = wyślij <form>, gdy Enter przeszedł bez echa
+  /* ========================== */
 
   if (typeof automaResetTimeout === 'function') automaResetTimeout();
+  const czekaj = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Aktywny element z zagłębieniem w shadow DOM.
+  function aktywnyElement() {
+    let el = document.activeElement;
+    while (el && el.shadowRoot && el.shadowRoot.activeElement) {
+      el = el.shadowRoot.activeElement;
+    }
+    return el;
+  }
+
+  const MAPA = {
+    Enter:     { key: 'Enter',     code: 'Enter',     keyCode: 13, charCode: 13 },
+    Tab:       { key: 'Tab',       code: 'Tab',       keyCode: 9 },
+    Escape:    { key: 'Escape',    code: 'Escape',    keyCode: 27 },
+    ArrowDown: { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
+    ArrowUp:   { key: 'ArrowUp',   code: 'ArrowUp',   keyCode: 38 },
+  };
+
+  function daneKlawisza(nazwa) {
+    return MAPA[nazwa] || {
+      key: nazwa,
+      code: nazwa,
+      keyCode: nazwa.length === 1 ? nazwa.toUpperCase().charCodeAt(0) : 0,
+    };
+  }
+
+  function zbudujZdarzenie(typ, d, charCode = 0) {
+    const ev = new KeyboardEvent(typ, {
+      key: d.key,
+      code: d.code,
+      keyCode: d.keyCode,
+      which: d.keyCode,
+      charCode,
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      view: window,
+    });
+    // Gdy konstruktor zignorował pola legacy — wymuś je getterami.
+    for (const [prop, wartosc] of [['keyCode', d.keyCode], ['which', d.keyCode], ['charCode', charCode]]) {
+      if (ev[prop] !== wartosc) {
+        try { Object.defineProperty(ev, prop, { get: () => wartosc }); } catch (_) { /* zostaje jak jest */ }
+      }
+    }
+    return ev;
+  }
+
+  /** Pełna sekwencja zdarzeń jednego klawisza. Zwraca true, gdy strona obsłużyła keydown. */
+  function wcisnijKlawisz(el, nazwa) {
+    const d = daneKlawisza(nazwa);
+    const obsluzone = !el.dispatchEvent(zbudujZdarzenie('keydown', d));
+    if (d.charCode) el.dispatchEvent(zbudujZdarzenie('keypress', d, d.charCode));
+    if (nazwa === 'Enter' && el.isContentEditable) {
+      el.dispatchEvent(new InputEvent('beforeinput', {
+        inputType: 'insertParagraph',
+        bubbles: true,
+        cancelable: true,
+      }));
+    }
+    el.dispatchEvent(zbudujZdarzenie('keyup', d));
+    return obsluzone;
+  }
+
+  /** Plan B: znajdź handler Reacta (onKeyDown) na elemencie lub przodkach i wywołaj wprost. */
+  function wywolajHandlerReacta(el, nazwa) {
+    const d = daneKlawisza(nazwa);
+    for (let node = el; node; node = node.parentElement) {
+      const klucz = Object.keys(node).find(
+        (k) => k.startsWith('__reactProps$') || k.startsWith('__reactEventHandlers$')
+      );
+      const props = klucz && node[klucz];
+      if (props && typeof props.onKeyDown === 'function') {
+        const fake = {
+          type: 'keydown',
+          key: d.key,
+          code: d.code,
+          keyCode: d.keyCode,
+          which: d.keyCode,
+          target: el,
+          currentTarget: node,
+          bubbles: true,
+          cancelable: true,
+          isTrusted: true,
+          defaultPrevented: false,
+          altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, repeat: false,
+          timeStamp: performance.now(),
+          preventDefault() { this.defaultPrevented = true; },
+          stopPropagation() {},
+          stopImmediatePropagation() {},
+          persist() {},
+          getModifierState() { return false; },
+        };
+        fake.nativeEvent = fake;
+        props.onKeyDown(fake);
+        return true;
+      }
+    }
+    return false;
+  }
 
   try {
-    const el = SELEKTOR
-      ? document.querySelector(SELEKTOR)
-      : document.activeElement;
+    const el = SELEKTOR ? document.querySelector(SELEKTOR) : aktywnyElement();
     if (!el || el === document.body) {
       throw new Error('Brak elementu docelowego — ustaw SELEKTOR lub kliknij pole wcześniejszym blokiem.');
     }
     el.focus();
 
-    // Pełne parametry Entera; keyCode/which dodane dla starszych bibliotek.
-    const props = {
-      key: 'Enter',
-      code: 'Enter',
-      keyCode: 13,
-      which: 13,
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-    };
-
-    // Sekwencja jak przy prawdziwym wciśnięciu klawisza.
-    const keydownOk = el.dispatchEvent(new KeyboardEvent('keydown', props));
-    el.dispatchEvent(new KeyboardEvent('keypress', props));
-    el.dispatchEvent(new KeyboardEvent('keyup', props));
-
-    // Jeśli strona anulowała keydown (preventDefault), sama obsłużyła Enter.
-    let action = 'events-only';
-    if (keydownOk) {
-      const isTextInput = el instanceof HTMLInputElement;
-      const isTextarea = el instanceof HTMLTextAreaElement;
-
-      if (WYSYLAJ_FORMULARZ && isTextInput && el.form) {
-        // Enter w polu formularza = wysłanie formularza.
-        if (typeof el.form.requestSubmit === 'function') el.form.requestSubmit();
-        else el.form.submit();
-        action = 'form-submitted';
-      } else if (WSTAW_NOWA_LINIE && isTextarea) {
-        const start = el.selectionStart ?? el.value.length;
-        const end = el.selectionEnd ?? el.value.length;
-        el.setRangeText('\n', start, end, 'end');
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        action = 'newline-inserted';
-      } else if (WSTAW_NOWA_LINIE && el.isContentEditable) {
-        const sel = window.getSelection();
-        if (sel && sel.rangeCount > 0) {
-          const range = sel.getRangeAt(0);
-          range.deleteContents();
-          const br = document.createElement('br');
-          range.insertNode(br);
-          range.setStartAfter(br);
-          sel.removeAllRanges();
-          sel.addRange(range);
-        } else {
-          el.append(document.createElement('br'));
-        }
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        action = 'newline-inserted';
-      }
-    } else {
-      action = 'handled-by-page';
+    const przebieg = [];
+    for (const nazwa of KLAWISZE) {
+      const obsluzone = wcisnijKlawisz(el, nazwa);
+      const react = obsluzone ? false : wywolajHandlerReacta(el, nazwa);
+      przebieg.push({ klawisz: nazwa, obsluzone, react });
+      await czekaj(ODSTEP_MS);
     }
 
-    automaNextBlock({ ok: true, action });
+    // Opcjonalny submit, gdy ostatni klawisz przeszedł bez żadnej reakcji.
+    const ostatni = przebieg[przebieg.length - 1];
+    if (
+      WYSYLAJ_FORMULARZ && ostatni && !ostatni.obsluzone && !ostatni.react &&
+      el instanceof HTMLInputElement && el.form
+    ) {
+      if (typeof el.form.requestSubmit === 'function') el.form.requestSubmit();
+      else el.form.submit();
+      ostatni.formularz = true;
+    }
+
+    automaNextBlock({ ok: true, przebieg });
   } catch (err) {
     automaNextBlock({ ok: false, error: err.message });
   }

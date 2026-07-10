@@ -85,26 +85,38 @@ Skrypt czyta `navigator.clipboard.readText()`, wysyła zdarzenie `paste`
 i wstawia tekst w miejscu kursora. Do następnego bloku przekazuje
 `{ ok: true, text }` albo `{ ok: false, error }`.
 
-## Automa — emulacja klawisza Enter
+## Automa — emulacja klawisza Enter (wersja 2, „mądry” Enter)
 
-Plik `automa-press-enter.js` emuluje wciśnięcie Entera na wskazanym polu:
+Plik `automa-press-enter.js` emuluje Enter w sposób odporny na widżety typu
+autouzupełnianie:
 
-1. Dodaj blok **„JavaScript Code”** (np. zaraz po bloku wklejającym)
+1. Dodaj blok **„JavaScript Code”** (np. zaraz po bloku wpisującym tekst)
    i wklej całą zawartość `automa-press-enter.js`.
-2. Wskaż pole selektorem w stałej `SELEKTOR` albo zostaw puste
-   (użyje aktywnego pola).
+2. Skonfiguruj stałe na górze:
+   - `SELEKTOR` — pole docelowe (puste = aktywny element, także w shadow DOM),
+   - `KLAWISZE` — sekwencja, domyślnie `['ArrowDown', 'Enter']`: strzałka
+     podświetla pierwszą podpowiedź, Enter ją wybiera. Bez listy podpowiedzi
+     ustaw `['Enter']`,
+   - `ODSTEP_MS` — pauza między klawiszami (czas na reakcję widżetu),
+   - `WYSYLAJ_FORMULARZ` — `true`, by wysłać `<form>`, gdy Enter przeszedł
+     bez żadnej reakcji strony.
 
-Skrypt wysyła sekwencję `keydown → keypress → keyup` z klawiszem Enter
-(z `keyCode: 13` dla starszych bibliotek). Ponieważ zdarzenia skryptowe nie
-wykonują akcji domyślnej, dodatkowo — jeśli strona sama nie obsłużyła Entera:
+Jak to działa: każdy klawisz to pełna sekwencja `keydown → keypress → keyup`
+z wymuszonymi polami legacy (`keyCode`, `which`, `charCode` — starsze
+biblioteki czytają tylko je), a dla pól `contenteditable` dochodzi
+`beforeinput`. Gdy strona zignoruje zdarzenie, uruchamia się **plan B**:
+skrypt odnajduje w DOM wewnętrzne propsy Reacta (`__reactProps$`) i wywołuje
+handler `onKeyDown` bezpośrednio — z obiektem, w którym `isTrusted: true`.
 
-- pole w formularzu → wysyła formularz (`requestSubmit`),
-- `textarea` / `contenteditable` → wstawia nową linię (wyłączane stałą
-  `WSTAW_NOWA_LINIE = false`).
+Do następnego bloku trafia `{ ok: true, przebieg: [{ klawisz, obsluzone,
+react }] }` — widać, który klawisz strona obsłużyła sama, a który poszedł
+przez plan B.
 
-Do następnego bloku przekazuje `{ ok: true, action }`, gdzie `action` mówi,
-co się stało: `handled-by-page`, `form-submitted`, `newline-inserted` albo
-`events-only`.
+**Granica możliwości:** prawdziwej flagi `isTrusted` w zdarzeniu DOM nie da
+się podrobić z poziomu JavaScriptu strony. Jeśli strona twardo jej wymaga,
+użyj natywnego bloku Automy **„Press key”** z włączonym **Debug mode**
+w ustawieniach workflow — klawisze idą wtedy przez Chrome DevTools Protocol
+i są nieodróżnialne od fizycznych.
 
 ## Automa — wybór opcji z autouzupełniania
 

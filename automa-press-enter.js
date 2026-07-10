@@ -18,7 +18,8 @@
 
 (async () => {
   const SELEKTOR = '';        // np. '#search' — puste = aktywne pole
-  const WSTAW_NOWA_LINIE = true; // false = nigdy nie wstawiaj \n (tylko zdarzenia + submit)
+  const WSTAW_NOWA_LINIE = true;  // false = nigdy nie wstawiaj \n
+  const WYSYLAJ_FORMULARZ = true; // false = nie wysyłaj formularza (np. przy autouzupełnianiu!)
 
   if (typeof automaResetTimeout === 'function') automaResetTimeout();
 
@@ -53,7 +54,7 @@
       const isTextInput = el instanceof HTMLInputElement;
       const isTextarea = el instanceof HTMLTextAreaElement;
 
-      if (isTextInput && el.form) {
+      if (WYSYLAJ_FORMULARZ && isTextInput && el.form) {
         // Enter w polu formularza = wysłanie formularza.
         if (typeof el.form.requestSubmit === 'function') el.form.requestSubmit();
         else el.form.submit();

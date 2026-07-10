@@ -13,6 +13,7 @@ czemu reagują na nie także aplikacyjne nasłuchiwacze.
 | `automa-paste-simple.js` | **Najprostsza** wersja pod Automę: schowek systemowy → aktywne pole. |
 | `automa-clipboard-paste.js` | Rozbudowana wersja pod Automę (stała / zmienna workflow / schowek). |
 | `automa-press-enter.js` | Emulacja wciśnięcia klawisza **Enter** pod Automę. |
+| `automa-select-option.js` | Wybór opcji z listy podpowiedzi (autouzupełnianie) przez kliknięcie. |
 | `index.html` | Strona demonstracyjna do testów w przeglądarce. |
 
 ## Szybki start
@@ -104,6 +105,27 @@ wykonują akcji domyślnej, dodatkowo — jeśli strona sama nie obsłużyła En
 Do następnego bloku przekazuje `{ ok: true, action }`, gdzie `action` mówi,
 co się stało: `handled-by-page`, `form-submitted`, `newline-inserted` albo
 `events-only`.
+
+## Automa — wybór opcji z autouzupełniania
+
+Gdy po wpisaniu tekstu ma się „zaznaczyć opcja" z listy podpowiedzi, emulowany
+Enter często zawodzi: widżety autouzupełniania sprawdzają `isTrusted` zdarzeń
+klawiatury albo wymagają wcześniejszego podświetlenia opcji. Niezawodne
+rozwiązania:
+
+1. **`automa-select-option.js`** — czeka aż lista podpowiedzi się pojawi
+   i klika w opcję pełną sekwencją zdarzeń myszy. Skonfiguruj `TEKST_OPCJI`
+   (fragment tekstu opcji) albo zostaw puste, by kliknąć pierwszą widoczną.
+2. **Natywny blok „Press key" + Debug mode** — w ustawieniach workflow włącz
+   *Debug mode*, potem użyj bloku *Press key* (klawisz `ArrowDown`, potem drugi
+   z `Enter`). W trybie debug Automa wysyła klawisze przez Chrome DevTools
+   Protocol, więc zdarzenia są „prawdziwe" (`isTrusted: true`) i strona nie
+   odróżni ich od fizycznych. Chrome pokaże pasek „Automa started debugging
+   this browser" — to normalne.
+
+W `automa-press-enter.js` dostępna jest też stała `WYSYLAJ_FORMULARZ = false`,
+która wyłącza wysyłanie formularza — przy autouzupełnianiu wysłanie formularza
+Enterem jest zwykle niepożądane.
 
 ## Użycie w rozszerzeniu Automa (wersja rozbudowana)
 

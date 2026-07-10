@@ -9,7 +9,8 @@ czemu reagują na nie także aplikacyjne nasłuchiwacze.
 
 | Plik | Opis |
 | --- | --- |
-| `clipboard-paste.js` | Moduł ES z funkcjami emulacji. |
+| `clipboard-paste.js` | Moduł ES z funkcjami emulacji (zwykła strona / aplikacja). |
+| `automa-clipboard-paste.js` | Wersja samodzielna pod blok „JavaScript Code” w rozszerzeniu **Automa**. |
 | `index.html` | Strona demonstracyjna do testów w przeglądarce. |
 
 ## Szybki start
@@ -65,6 +66,34 @@ Jak `emulatePaste`, ale tekst pobiera z prawdziwego schowka systemowego przez
 
 Przechwytuje kombinację **Ctrl/Cmd + V** na całej stronie i wykonuje emulację
 z realnego schowka. Zwraca funkcję odpinającą nasłuchiwacz.
+
+## Użycie w rozszerzeniu Automa
+
+Plik `automa-clipboard-paste.js` jest przygotowany specjalnie pod rozszerzenie
+[Automa](https://www.automa.site). W zwykłym module ES (`import`/`export`) Automa
+by się nie uruchomiła — dlatego to jeden samodzielny skrypt.
+
+**Jak użyć:**
+
+1. W workflow Automy dodaj blok **„JavaScript Code”** (Wykonaj kod JS).
+2. Wklej całą zawartość `automa-clipboard-paste.js` do pola z kodem.
+3. Na górze skryptu ustaw konfigurację:
+   - `TEXT_TO_PASTE` — stały tekst do wklejenia, albo
+   - `VARIABLE_NAME` — nazwa zmiennej Automy z tekstem (np. z wcześniejszego
+     bloku „Clipboard” / „Insert data”), albo pozostaw puste, aby spróbować
+     odczytać prawdziwy schowek systemowy,
+   - `TARGET_SELECTOR` — selektor CSS pola docelowego (puste => aktywny element).
+4. Zadbaj, aby wcześniejszy blok ustawił fokus na polu (np. blok „Trigger event” /
+   klik) albo podaj `TARGET_SELECTOR`.
+
+**Co zwraca do workflow:** skrypt wywołuje `automaNextBlock({ ok, text, inserted,
+defaultPrevented })` oraz zapisuje wynik do zmiennej `pasteResult`. W razie błędu
+przekazuje `{ ok: false, error }`, więc możesz go obsłużyć w kolejnym bloku.
+
+Uwaga: kod bloku Automy działa w kontekście strony, więc `navigator.clipboard`
+podlega tym samym ograniczeniom co na zwykłej stronie (bezpieczny kontekst,
+fokus dokumentu). Jeśli odczyt schowka bywa zawodny w automatyzacji, najpewniej
+jest podać tekst przez `TEXT_TO_PASTE` lub zmienną workflow.
 
 ## Ograniczenia i uwagi
 

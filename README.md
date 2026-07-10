@@ -10,7 +10,8 @@ czemu reagują na nie także aplikacyjne nasłuchiwacze.
 | Plik | Opis |
 | --- | --- |
 | `clipboard-paste.js` | Moduł ES z funkcjami emulacji (zwykła strona / aplikacja). |
-| `automa-clipboard-paste.js` | Wersja samodzielna pod blok „JavaScript Code” w rozszerzeniu **Automa**. |
+| `automa-paste-simple.js` | **Najprostsza** wersja pod Automę: schowek systemowy → aktywne pole. |
+| `automa-clipboard-paste.js` | Rozbudowana wersja pod Automę (stała / zmienna workflow / schowek). |
 | `index.html` | Strona demonstracyjna do testów w przeglądarce. |
 
 ## Szybki start
@@ -67,7 +68,22 @@ Jak `emulatePaste`, ale tekst pobiera z prawdziwego schowka systemowego przez
 Przechwytuje kombinację **Ctrl/Cmd + V** na całej stronie i wykonuje emulację
 z realnego schowka. Zwraca funkcję odpinającą nasłuchiwacz.
 
-## Użycie w rozszerzeniu Automa
+## Automa — wersja prosta (wklejanie ze schowka)
+
+Jeśli chcesz po prostu wkleić zawartość schowka systemowego:
+
+1. W workflow dodaj blok, który klika w pole docelowe (żeby miało fokus),
+   np. **„Event click”** na inpucie.
+2. Dodaj blok **„JavaScript Code”** i wklej całą zawartość
+   `automa-paste-simple.js`.
+3. Opcjonalnie: zamiast klikać w pole, wpisz jego selektor CSS w stałą
+   `SELEKTOR` na górze skryptu (np. `'#search'`).
+
+Skrypt czyta `navigator.clipboard.readText()`, wysyła zdarzenie `paste`
+i wstawia tekst w miejscu kursora. Do następnego bloku przekazuje
+`{ ok: true, text }` albo `{ ok: false, error }`.
+
+## Użycie w rozszerzeniu Automa (wersja rozbudowana)
 
 Plik `automa-clipboard-paste.js` jest przygotowany specjalnie pod rozszerzenie
 [Automa](https://www.automa.site). W zwykłym module ES (`import`/`export`) Automa

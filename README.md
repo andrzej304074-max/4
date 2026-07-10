@@ -12,6 +12,7 @@ czemu reagują na nie także aplikacyjne nasłuchiwacze.
 | `clipboard-paste.js` | Moduł ES z funkcjami emulacji (zwykła strona / aplikacja). |
 | `automa-paste-simple.js` | **Najprostsza** wersja pod Automę: schowek systemowy → aktywne pole. |
 | `automa-clipboard-paste.js` | Rozbudowana wersja pod Automę (stała / zmienna workflow / schowek). |
+| `automa-press-enter.js` | Emulacja wciśnięcia klawisza **Enter** pod Automę. |
 | `index.html` | Strona demonstracyjna do testów w przeglądarce. |
 
 ## Szybki start
@@ -82,6 +83,27 @@ Jeśli chcesz po prostu wkleić zawartość schowka systemowego:
 Skrypt czyta `navigator.clipboard.readText()`, wysyła zdarzenie `paste`
 i wstawia tekst w miejscu kursora. Do następnego bloku przekazuje
 `{ ok: true, text }` albo `{ ok: false, error }`.
+
+## Automa — emulacja klawisza Enter
+
+Plik `automa-press-enter.js` emuluje wciśnięcie Entera na wskazanym polu:
+
+1. Dodaj blok **„JavaScript Code”** (np. zaraz po bloku wklejającym)
+   i wklej całą zawartość `automa-press-enter.js`.
+2. Wskaż pole selektorem w stałej `SELEKTOR` albo zostaw puste
+   (użyje aktywnego pola).
+
+Skrypt wysyła sekwencję `keydown → keypress → keyup` z klawiszem Enter
+(z `keyCode: 13` dla starszych bibliotek). Ponieważ zdarzenia skryptowe nie
+wykonują akcji domyślnej, dodatkowo — jeśli strona sama nie obsłużyła Entera:
+
+- pole w formularzu → wysyła formularz (`requestSubmit`),
+- `textarea` / `contenteditable` → wstawia nową linię (wyłączane stałą
+  `WSTAW_NOWA_LINIE = false`).
+
+Do następnego bloku przekazuje `{ ok: true, action }`, gdzie `action` mówi,
+co się stało: `handled-by-page`, `form-submitted`, `newline-inserted` albo
+`events-only`.
 
 ## Użycie w rozszerzeniu Automa (wersja rozbudowana)
 

@@ -104,7 +104,10 @@
         pominiete.push('ladowanie');
       }
 
-      if (uplynelo < BUDZET_SPINNERA_MS) {
+      // Własny SELEKTOR_ZNIKNIE to jawna intencja (np. pasek postępu uploadu)
+      // — czekamy na jego zniknięcie bez budżetu. Budżet dotyczy tylko
+      // domyślnej listy spinnerów, która może dawać fałszywe trafienia.
+      if (SELEKTOR_ZNIKNIE || uplynelo < BUDZET_SPINNERA_MS) {
         for (const sel of SPINNERY) {
           const el = znajdzWszystkie(sel).find(widoczny);
           if (el) return 'widoczny wskaźnik ładowania (' + sel + ')';

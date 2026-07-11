@@ -19,12 +19,16 @@
 
 (async () => {
   /* ====== KONFIGURACJA ====== */
-  const SELEKTOR = '';                     // np. '#pole' — puste = aktywny element
-  const KLAWISZE = ['ArrowDown', 'Enter']; // ['Enter'] gdy pole bez listy podpowiedzi
-  const ODSTEP_MS = 150;                   // pauza między klawiszami
-  const CZEKAJ_NA_GOTOWOSC = true;         // false = działaj od razu, bez fazy czekania
-  const MAKS_CZEKANIE_MS = 10000;          // limit fazy czekania
-  const CISZA_DOM_MS = 400;                // ile ms spokoju w DOM uznajemy za „gotowe”
+  const SELEKTOR = '';             // np. '#pole' — puste = aktywny element
+  const KLAWISZE = ['Enter'];      // dla pola z listą podpowiedzi: ['ArrowDown', 'Enter']
+  const ODSTEP_MS = 150;           // pauza między klawiszami
+  const PLAN_B_REACT = false;      // true = wywołaj handler Reacta, gdy strona nie zgłosi
+                                   // obsługi Entera. UWAGA: jeśli strona obsługuje Enter
+                                   // bez preventDefault, plan B ZDUBLUJE akcję (np. podwójna
+                                   // wysyłka w czacie). Włączaj tylko, gdy Enter nie działa.
+  const CZEKAJ_NA_GOTOWOSC = true; // false = działaj od razu, bez fazy czekania
+  const MAKS_CZEKANIE_MS = 10000;  // limit fazy czekania
+  const CISZA_DOM_MS = 400;        // ile ms spokoju w DOM uznajemy za „gotowe”
   /* ========================== */
 
   // Dokładnie jedno zakończenie bloku, cokolwiek się stanie.
@@ -184,7 +188,7 @@
     const przebieg = [];
     for (const nazwa of KLAWISZE) {
       const obsluzone = wcisnijKlawisz(el, nazwa);
-      const react = obsluzone ? false : wywolajHandlerReacta(el, nazwa);
+      const react = (!obsluzone && PLAN_B_REACT) ? wywolajHandlerReacta(el, nazwa) : false;
       przebieg.push({ klawisz: nazwa, obsluzone, react });
       await czekaj(ODSTEP_MS);
     }

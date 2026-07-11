@@ -1,37 +1,40 @@
 /**
- * automa-smart-wait.js — wersja 3 (budżety czasowe warunków)
- * ----------------------------------------------------------
+ * automa-smart-wait.js — wersja 4 (czekanie bez limitu)
+ * -----------------------------------------------------
  * Uniwersalny blok czekania pod „JavaScript Code” w Automie: wstaw między
  * DOWOLNE dwa bloki. Czeka, aż strona skończy pracę po poprzednim bloku,
  * i natychmiast oddaje kontrolę dalej.
  *
- * Nowość w v3: każdy warunek ma własny BUDŻET czasu. Na stronach, które
- * mutują DOM bez przerwy (czaty, animacje, zegary), warunek „ciszy w DOM”
- * nigdy się nie spełni — po wyczerpaniu budżetu jest pomijany, zamiast
- * blokować workflow do pełnego limitu. To samo dotyczy wiecznie widocznych
- * elementów wyglądających jak spinner.
+ * v4: MAKS_CZEKANIE_MS = 0 oznacza CZEKANIE BEZ LIMITU — blok czeka tak
+ * długo, aż warunki będą spełnione (skrypt cyklicznie woła
+ * automaResetTimeout, więc Automa nie przerwie bloku). Watchdog działa
+ * tylko przy ustawionym limicie.
  *
  * Warunki i budżety (liczone od startu bloku):
- *   - dokument doładowany (readyState)  → pełny limit MAKS_CZEKANIE_MS,
+ *   - dokument doładowany (readyState)  → bez ograniczenia,
  *   - brak widocznych spinnerów         → do BUDZET_SPINNERA_MS,
  *   - cisza w DOM przez CISZA_DOM_MS    → do BUDZET_CISZY_MS,
- *   - gotowość SELEKTOR_NASTEPNY        → pełny limit (tylko gdy ustawiony).
+ *   - gotowość SELEKTOR_NASTEPNY        → bez ograniczenia (gdy ustawiony).
+ * Budżety chronią przed wiecznym czekaniem na stronach, które mutują DOM
+ * bez przerwy (czaty, animacje) lub mają stale widoczne „spinnery”.
  *
- * USTAWIENIA BLOKU: Execution context = ACTIVE TAB, Timeout = 30000.
- * Wynik: { ok, czekalemMs, pominiete } — `pominiete` mówi, które warunki
- * wyczerpały budżet (diagnostyka w logach).
+ * USTAWIENIA BLOKU: Execution context = ACTIVE TAB, Timeout = 30000
+ * (skrypt i tak go odświeża w trakcie czekania).
+ * Wynik: { ok, czekalemMs, pominiete }.
  */
 
 (async () => {
-  /* ====== KONFIGURACJA (domyślne działają uniwersalnie) ====== */
+  /* ====== KONFIGURACJA ====== */
   const SELEKTOR_NASTEPNY = '';    // OPCJONALNIE: element potrzebny następnemu blokowi
   const SELEKTOR_ZNIKNIE = '';     // OPCJONALNIE: własny spinner/overlay
-  const MAKS_CZEKANIE_MS = 10000;  // twardy limit całego czekania
+  const MAKS_CZEKANIE_MS = 0;      // 0 = BEZ LIMITU; np. 15000 = maks. 15 s
   const CISZA_DOM_MS = 400;        // ile ms bez zmian w DOM uznajemy za „spokój”
   const BUDZET_CISZY_MS = 4000;    // po tym czasie warunek ciszy DOM jest pomijany
   const BUDZET_SPINNERA_MS = 8000; // po tym czasie ignorujemy wiecznie widoczny spinner
   const INTERWAL_MS = 100;         // co ile sprawdzać warunki
-  /* =========================================================== */
+  /* ========================== */
+
+  const bezLimitu = !(MAKS_CZEKANIE_MS > 0);
 
   let zakonczono = false;
   const zakoncz = (dane) => {
@@ -41,9 +44,13 @@
     else console.log('[smart-wait]', dane);
   };
 
-  setTimeout(() => {
-    zakoncz({ ok: false, error: 'watchdog: skrypt nie zakończył się w limicie' });
-  }, MAKS_CZEKANIE_MS + 2000);
+  // Watchdog tylko w trybie z limitem — przy czekaniu bez limitu nie ma
+  // punktu odcięcia, blok żyje dzięki cyklicznemu automaResetTimeout.
+  if (!bezLimitu) {
+    setTimeout(() => {
+      zakoncz({ ok: false, error: 'watchdog: skrypt nie zakończył się w limicie' });
+    }, MAKS_CZEKANIE_MS + 2000);
+  }
 
   try {
     if (typeof document === 'undefined' || !document.documentElement) {
@@ -145,7 +152,9 @@
       try { powod = coBlokuje(uplynelo); }
       catch (e) { powod = 'błąd testu: ' + ((e && e.message) || String(e)); }
       if (!powod) break;
-      if (uplynelo >= MAKS_CZEKANIE_MS) break;
+      if (!bezLimitu && uplynelo >= MAKS_CZEKANIE_MS) break;
+      // Odświeżaj timeout bloku Automy — dzięki temu czekanie może trwać
+      // dowolnie długo, nawet gdy blok ma ustawiony Timeout 30000.
       if (typeof automaResetTimeout === 'function') {
         try { automaResetTimeout(); } catch (_) { /* nieistotne */ }
       }

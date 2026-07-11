@@ -14,6 +14,7 @@ czemu reagują na nie także aplikacyjne nasłuchiwacze.
 | `automa-clipboard-paste.js` | Rozbudowana wersja pod Automę (stała / zmienna workflow / schowek). |
 | `automa-press-enter.js` | Emulacja wciśnięcia klawisza **Enter** pod Automę. |
 | `automa-select-option.js` | Wybór opcji z listy podpowiedzi (autouzupełnianie) przez kliknięcie. |
+| `automa-smart-wait.js` | Inteligentne czekanie: tylko tak długo, aż strona skończy i następny krok będzie możliwy. |
 | `index.html` | Strona demonstracyjna do testów w przeglądarce. |
 
 ## Szybki start
@@ -138,6 +139,31 @@ rozwiązania:
 W `automa-press-enter.js` dostępna jest też stała `WYSYLAJ_FORMULARZ = false`,
 która wyłącza wysyłanie formularza — przy autouzupełnianiu wysłanie formularza
 Enterem jest zwykle niepożądane.
+
+## Automa — inteligentne czekanie (smart wait)
+
+Plik `automa-smart-wait.js` zastępuje sztywne bloki **Delay**: czeka dokładnie
+tak długo, aż poprzednie operacje strony się zakończą i następna akcja będzie
+możliwa — a potem natychmiast przechodzi dalej. Wstaw go między operacjami:
+
+```
+Forms (wpisz tekst) → [smart wait] → Press key Enter → [smart wait] → dalej
+```
+
+Sprawdzane warunki (wszystkie naraz, co 100 ms):
+
+1. dokument doładowany (`readyState === 'complete'`),
+2. brak widocznych spinnerów/overlayów (typowe selektory albo własny
+   w `SELEKTOR_ZNIKNIE`),
+3. DOM „ucichł” — brak zmian przez `CISZA_DOM_MS` (domyślnie 500 ms),
+4. element dla następnego bloku (`SELEKTOR_NASTEPNY`) istnieje, jest widoczny,
+   aktywny (nie `disabled`) i nie przysłania go inny element; w razie potrzeby
+   skrypt przewija do niego stronę.
+
+Po przekroczeniu `MAKS_CZEKANIE_MS` (domyślnie 15 s) przechodzi dalej
+z `{ ok: false, powod }` — rozgałęzisz to blokiem **Conditions** po
+`{{prevBlockData.ok}}`. Przy sukcesie zwraca `{ ok: true, czekalemMs }`,
+więc w logach widać, ile realnie czekał.
 
 ## Użycie w rozszerzeniu Automa (wersja rozbudowana)
 

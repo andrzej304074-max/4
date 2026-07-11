@@ -1,127 +1,152 @@
 /**
- * automa-smart-wait.js
- * --------------------
- * „Inteligentne czekanie” pod blok „JavaScript Code” w Automie.
+ * automa-smart-wait.js — wersja 2 (pancerna)
+ * ------------------------------------------
+ * „Inteligentne czekanie” pod blok „JavaScript Code” w Automie: czeka tylko
+ * tak długo, aż poprzednie operacje strony ustaną i następny krok będzie
+ * możliwy, po czym natychmiast przechodzi dalej.
  *
- * Zamiast sztywnego Delay (np. zawsze 3 s) skrypt czeka DOKŁADNIE tak długo,
- * jak trzeba: kończy się w momencie, gdy poprzednie operacje strony ustały
- * i następna akcja jest możliwa. Sprawdza równocześnie:
+ * Wersja 2 — dlaczego „pancerna”:
+ *   - KAŻDY możliwy błąd jest łapany i raportowany przez automaNextBlock,
+ *     więc w logu Automy zawsze zobaczysz konkretny powód zamiast gołego
+ *     „error” (goły error = skrypt umarł przed zgłoszeniem wyniku i blok
+ *     padł na timeoucie).
+ *   - Wykrywa uruchomienie w złym kontekście (Background zamiast Active tab)
+ *     i mówi o tym wprost.
+ *   - Watchdog gwarantuje zakończenie bloku nawet przy nieprzewidzianym
+ *     zawieszeniu.
+ *   - Tylko maksymalnie zgodne konstrukcje; każdy selektor w try/catch.
  *
- *   1. Czy dokument skończył się ładować (document.readyState === 'complete').
- *   2. Czy zniknęły wskaźniki ładowania (spinnery/overlaye — typowe selektory
- *      albo własny w SELEKTOR_ZNIKNIE).
- *   3. Czy DOM się uspokoił — brak zmian w drzewie przez CISZA_DOM_MS
- *      (MutationObserver); to wyłapuje trwające renderowanie po AJAX-ie.
- *   4. Czy element potrzebny NASTĘPNEMU blokowi (SELEKTOR_NASTEPNY) już
- *      istnieje, jest widoczny, nie jest wyłączony (disabled/aria-disabled)
- *      i nie przysłania go inny element (np. overlay).
- *
- * Gdy wszystkie warunki są spełnione — natychmiast przechodzi dalej.
- * Gdy nie zdąży w MAKS_CZEKANIE_MS — przechodzi dalej z { ok: false, powod },
- * co można obsłużyć blokiem „Conditions” ({{prevBlockData.ok}}).
- *
- * Wstaw ten blok między operacjami, np.:
- *   Forms (wpisz tekst) → [TEN BLOK] → Press key Enter → [TEN BLOK] → dalej
+ * USTAWIENIA BLOKU (ikona zębatki na bloku JavaScript Code):
+ *   - Execution context: ACTIVE TAB (w Background nie ma dostępu do strony!),
+ *   - Timeout bloku: ustaw WIĘKSZY niż MAKS_CZEKANIE_MS, np. 30000.
  */
 
 (async () => {
   /* ====== KONFIGURACJA ====== */
   const SELEKTOR_NASTEPNY = '';   // element wymagany przez następny blok, np. '#przycisk'
-  const SELEKTOR_ZNIKNIE = '';    // własny spinner/overlay do zniknięcia (puste = typowe)
+  const SELEKTOR_ZNIKNIE = '';    // własny spinner/overlay (puste = typowe klasy)
   const MAKS_CZEKANIE_MS = 15000; // twardy limit czekania
   const CISZA_DOM_MS = 500;       // ile ms bez zmian w DOM uznajemy za „spokój”
   const INTERWAL_MS = 100;        // co ile sprawdzać warunki
   /* ========================== */
 
-  const czekaj = (ms) => new Promise((r) => setTimeout(r, ms));
-
-  const SPINNERY = SELEKTOR_ZNIKNIE || [
-    '.spinner', '.loader', '.loading', '.loading-overlay',
-    '[class*="spinner" i]', '[class*="loader" i]',
-    '[aria-busy="true"]',
-    '.MuiCircularProgress-root', '.v-progress-circular', '.ant-spin-spinning',
-  ].join(', ');
-
-  const widoczny = (el) => {
-    const r = el.getBoundingClientRect();
-    if (r.width === 0 || r.height === 0) return false;
-    const st = getComputedStyle(el);
-    return st.visibility !== 'hidden' && st.display !== 'none' && st.opacity !== '0';
+  // Dokładnie jedno zakończenie bloku — cokolwiek by się działo.
+  let zakonczono = false;
+  const zakoncz = (dane) => {
+    if (zakonczono) return;
+    zakonczono = true;
+    if (typeof automaNextBlock === 'function') automaNextBlock(dane);
+    else console.log('[smart-wait]', dane);
   };
 
-  // Obserwuj zmiany DOM — „cisza” oznacza, że strona skończyła przerysowywać.
-  let ostatniaMutacja = Date.now();
-  const obserwator = new MutationObserver(() => { ostatniaMutacja = Date.now(); });
-  obserwator.observe(document.documentElement, {
-    childList: true, subtree: true, attributes: true, characterData: true,
-  });
+  // Watchdog: gdyby cokolwiek się zawiesiło, blok i tak się zakończy.
+  setTimeout(() => {
+    zakoncz({ ok: false, error: 'watchdog: skrypt nie zakończył się w limicie' });
+  }, MAKS_CZEKANIE_MS + 2000);
 
-  let przewinieto = false;
-
-  /** Zwraca '' gdy wszystko gotowe, albo opis tego, co jeszcze blokuje. */
-  function coBlokuje() {
-    if (document.readyState !== 'complete') {
-      return 'strona wciąż się ładuje (readyState: ' + document.readyState + ')';
+  try {
+    if (typeof document === 'undefined' || !document.documentElement) {
+      return zakoncz({
+        ok: false,
+        error: 'Brak dostępu do strony — ustaw "Execution context" bloku na "Active tab".',
+      });
     }
 
-    const spinner = [...document.querySelectorAll(SPINNERY)].find(widoczny);
-    if (spinner) {
-      const opis = spinner.className
-        ? '.' + String(spinner.className).trim().split(/\s+/).join('.')
-        : spinner.tagName.toLowerCase();
-      return 'widoczny wskaźnik ładowania: ' + opis;
-    }
+    const czekaj = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    if (Date.now() - ostatniaMutacja < CISZA_DOM_MS) {
-      return 'DOM wciąż się zmienia';
-    }
+    const SPINNERY = SELEKTOR_ZNIKNIE
+      ? [SELEKTOR_ZNIKNIE]
+      : [
+          '.spinner', '.loader', '.loading', '.loading-overlay',
+          '[aria-busy="true"]',
+          '.MuiCircularProgress-root', '.v-progress-circular', '.ant-spin-spinning',
+        ];
 
-    if (SELEKTOR_NASTEPNY) {
-      const el = document.querySelector(SELEKTOR_NASTEPNY);
-      if (!el) return 'brak elementu ' + SELEKTOR_NASTEPNY;
-      if (!widoczny(el)) return 'element ' + SELEKTOR_NASTEPNY + ' jest niewidoczny';
-      if (el.disabled || el.getAttribute('aria-disabled') === 'true') {
-        return 'element ' + SELEKTOR_NASTEPNY + ' jest wyłączony (disabled)';
+    const znajdzWszystkie = (selektor) => {
+      try { return Array.prototype.slice.call(document.querySelectorAll(selektor)); }
+      catch (_) { return []; }
+    };
+
+    const widoczny = (el) => {
+      try {
+        const r = el.getBoundingClientRect();
+        if (!r.width || !r.height) return false;
+        const st = getComputedStyle(el);
+        return st.visibility !== 'hidden' && st.display !== 'none' && st.opacity !== '0';
+      } catch (_) { return false; }
+    };
+
+    // Cisza w DOM — jeśli obserwatora nie da się założyć, warunek pomijamy.
+    let ostatniaMutacja = Date.now();
+    let obserwator = null;
+    try {
+      obserwator = new MutationObserver(() => { ostatniaMutacja = Date.now(); });
+      obserwator.observe(document.documentElement, {
+        childList: true, subtree: true, attributes: true, characterData: true,
+      });
+    } catch (_) { obserwator = null; }
+
+    let przewinieto = false;
+
+    /** Zwraca '' gdy wszystko gotowe, albo opis tego, co blokuje. */
+    const coBlokuje = () => {
+      if (document.readyState !== 'complete') return 'strona wciąż się ładuje';
+
+      for (const sel of SPINNERY) {
+        const el = znajdzWszystkie(sel).find(widoczny);
+        if (el) return 'widoczny wskaźnik ładowania (' + sel + ')';
       }
 
-      // Czy element nie jest przysłonięty przez inny (np. overlay)?
-      const r = el.getBoundingClientRect();
-      const poza = r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth;
-      if (poza && !przewinieto) {
-        el.scrollIntoView({ block: 'center', inline: 'center' });
-        przewinieto = true;
-        return 'przewijanie do elementu ' + SELEKTOR_NASTEPNY;
+      if (obserwator && Date.now() - ostatniaMutacja < CISZA_DOM_MS) {
+        return 'DOM wciąż się zmienia';
       }
-      const x = Math.min(Math.max(r.left + r.width / 2, 0), innerWidth - 1);
-      const y = Math.min(Math.max(r.top + r.height / 2, 0), innerHeight - 1);
-      const naWierzchu = document.elementFromPoint(x, y);
-      if (naWierzchu && !el.contains(naWierzchu) && !naWierzchu.contains(el)) {
-        const opis = naWierzchu.id
-          ? '#' + naWierzchu.id
-          : naWierzchu.tagName.toLowerCase() +
-            (naWierzchu.className ? '.' + String(naWierzchu.className).trim().split(/\s+/)[0] : '');
-        return 'element przysłonięty przez ' + opis;
+
+      if (SELEKTOR_NASTEPNY) {
+        let el = null;
+        try { el = document.querySelector(SELEKTOR_NASTEPNY); }
+        catch (_) { return 'niepoprawny selektor: ' + SELEKTOR_NASTEPNY; }
+        if (!el) return 'brak elementu ' + SELEKTOR_NASTEPNY;
+        if (!widoczny(el)) return 'element niewidoczny: ' + SELEKTOR_NASTEPNY;
+        if (el.disabled || el.getAttribute('aria-disabled') === 'true') {
+          return 'element wyłączony (disabled): ' + SELEKTOR_NASTEPNY;
+        }
+        try {
+          const r = el.getBoundingClientRect();
+          const poza = r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth;
+          if (poza && !przewinieto) {
+            el.scrollIntoView({ block: 'center', inline: 'center' });
+            przewinieto = true;
+            return 'przewijanie do elementu';
+          }
+          const x = Math.min(Math.max(r.left + r.width / 2, 0), innerWidth - 1);
+          const y = Math.min(Math.max(r.top + r.height / 2, 0), innerHeight - 1);
+          const naWierzchu = document.elementFromPoint(x, y);
+          if (naWierzchu && !el.contains(naWierzchu) && !naWierzchu.contains(el)) {
+            return 'element przysłonięty przez inny (np. overlay)';
+          }
+        } catch (_) { /* test przysłonięcia pomijamy przy błędzie */ }
       }
+
+      return '';
+    };
+
+    const start = Date.now();
+    let powod = '';
+    for (;;) {
+      try { powod = coBlokuje(); }
+      catch (e) { powod = 'błąd testu: ' + ((e && e.message) || String(e)); }
+      if (!powod) break;
+      if (Date.now() - start >= MAKS_CZEKANIE_MS) break;
+      if (typeof automaResetTimeout === 'function') {
+        try { automaResetTimeout(); } catch (_) { /* nieistotne */ }
+      }
+      await czekaj(INTERWAL_MS);
     }
+    if (obserwator) { try { obserwator.disconnect(); } catch (_) { /* nieistotne */ } }
 
-    return '';
-  }
-
-  const start = Date.now();
-  let powod = coBlokuje();
-  while (powod && Date.now() - start < MAKS_CZEKANIE_MS) {
-    // Odświeżaj timeout bloku Automy, żeby długie czekanie go nie ubiło.
-    if (typeof automaResetTimeout === 'function') automaResetTimeout();
-    await czekaj(INTERWAL_MS);
-    powod = coBlokuje();
-  }
-  obserwator.disconnect();
-
-  const czekalemMs = Date.now() - start;
-  if (!powod) {
-    automaNextBlock({ ok: true, czekalemMs });
-  } else {
-    // Limit minął — idź dalej, ale powiedz dlaczego (obsłuż blokiem Conditions).
-    automaNextBlock({ ok: false, czekalemMs, powod });
+    const czekalemMs = Date.now() - start;
+    zakoncz(powod ? { ok: false, czekalemMs, powod } : { ok: true, czekalemMs });
+  } catch (err) {
+    zakoncz({ ok: false, error: (err && err.message) || String(err) });
   }
 })();

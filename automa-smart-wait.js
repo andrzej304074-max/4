@@ -31,6 +31,7 @@
   const CISZA_DOM_MS = 400;        // ile ms bez zmian w DOM uznajemy za „spokój”
   const BUDZET_CISZY_MS = 4000;    // po tym czasie warunek ciszy DOM jest pomijany
   const BUDZET_SPINNERA_MS = 8000; // po tym czasie ignorujemy wiecznie widoczny spinner
+  const BUDZET_LADOWANIA_MS = 10000; // po tym czasie nie czekamy dłużej na readyState
   const INTERWAL_MS = 100;         // co ile sprawdzać warunki
   /* ========================== */
 
@@ -97,7 +98,11 @@
     const pominiete = [];
 
     const coBlokuje = (uplynelo) => {
-      if (document.readyState !== 'complete') return 'strona wciąż się ładuje';
+      if (uplynelo < BUDZET_LADOWANIA_MS) {
+        if (document.readyState !== 'complete') return 'strona wciąż się ładuje';
+      } else if (pominiete.indexOf('ladowanie') === -1) {
+        pominiete.push('ladowanie');
+      }
 
       if (uplynelo < BUDZET_SPINNERA_MS) {
         for (const sel of SPINNERY) {

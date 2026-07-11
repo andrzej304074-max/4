@@ -139,15 +139,22 @@
 
     function wcisnijKlawisz(el, nazwa) {
       const d = daneKlawisza(nazwa);
-      const obsluzone = !el.dispatchEvent(zbudujZdarzenie('keydown', d));
-      if (d.charCode) el.dispatchEvent(zbudujZdarzenie('keypress', d, d.charCode));
-      if (nazwa === 'Enter' && el.isContentEditable) {
-        el.dispatchEvent(new InputEvent('beforeinput', {
-          inputType: 'insertParagraph', bubbles: true, cancelable: true,
-        }));
+      const keydownAnulowany = !el.dispatchEvent(zbudujZdarzenie('keydown', d));
+      // Wierność przeglądarce: po anulowanym keydown NIE ma keypress ani
+      // beforeinput — inaczej strona nasłuchująca obu dostanie akcję 2 razy.
+      if (!keydownAnulowany) {
+        let keypressAnulowany = false;
+        if (d.charCode) {
+          keypressAnulowany = !el.dispatchEvent(zbudujZdarzenie('keypress', d, d.charCode));
+        }
+        if (!keypressAnulowany && nazwa === 'Enter' && el.isContentEditable) {
+          el.dispatchEvent(new InputEvent('beforeinput', {
+            inputType: 'insertParagraph', bubbles: true, cancelable: true,
+          }));
+        }
       }
       el.dispatchEvent(zbudujZdarzenie('keyup', d));
-      return obsluzone;
+      return keydownAnulowany;
     }
 
     function wywolajHandlerReacta(el, nazwa) {

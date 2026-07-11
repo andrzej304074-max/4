@@ -10,12 +10,19 @@ czemu reagują na nie także aplikacyjne nasłuchiwacze.
 | Plik | Opis |
 | --- | --- |
 | `clipboard-paste.js` | Moduł ES z funkcjami emulacji (zwykła strona / aplikacja). |
-| `automa-paste-simple.js` | **Najprostsza** wersja pod Automę: schowek systemowy → aktywne pole. |
+| `automa-paste-simple.js` | Wklejanie ze schowka pod Automę, z **wbudowanym** inteligentnym czekaniem. |
 | `automa-clipboard-paste.js` | Rozbudowana wersja pod Automę (stała / zmienna workflow / schowek). |
-| `automa-press-enter.js` | Emulacja wciśnięcia klawisza **Enter** pod Automę. |
+| `automa-press-enter.js` | Emulacja **Enter** pod Automę, z **wbudowanym** inteligentnym czekaniem. |
 | `automa-select-option.js` | Wybór opcji z listy podpowiedzi (autouzupełnianie) przez kliknięcie. |
-| `automa-smart-wait.js` | Inteligentne czekanie: tylko tak długo, aż strona skończy i następny krok będzie możliwy. |
+| `automa-smart-wait.js` | Samodzielny blok inteligentnego czekania (przed blokami natywnymi, np. Click). |
 | `index.html` | Strona demonstracyjna do testów w przeglądarce. |
+
+Skrypty akcji (`automa-paste-simple.js`, `automa-press-enter.js`) mają
+czekanie **wbudowane**: same czekają, aż strona skończy poprzednie operacje,
+i dopiero wykonują akcję — osobne bloki Delay nie są potrzebne. Samodzielny
+`automa-smart-wait.js` przydaje się tylko przed blokami natywnymi Automy
+(np. Click element); alternatywnie włącz w tych blokach opcję
+„Wait for selector”.
 
 ## Szybki start
 

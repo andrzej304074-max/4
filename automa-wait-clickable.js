@@ -26,14 +26,17 @@
   const MAKS_CZEKANIE_MS = 0;     // 0 = bez limitu; np. 30000 = maks. 30 s
   const INTERWAL_MS = 150;        // co ile sprawdzać
   const KLASY_BLOKADY = ['disabled', 'is-disabled', 'btn-disabled', 'loading', 'is-loading'];
+  const POKAZUJ_POWOD_W_TYTULE = true; // pokazuj na karcie, na co skrypt aktualnie czeka
   /* ========================== */
 
   const bezLimitu = !(MAKS_CZEKANIE_MS > 0);
 
+  let przywrocTytul = null;
   let zakonczono = false;
   const zakoncz = (dane) => {
     if (zakonczono) return;
     zakonczono = true;
+    if (przywrocTytul) { try { przywrocTytul(); } catch (_) { /* nieistotne */ } }
     if (typeof automaNextBlock === 'function') automaNextBlock(dane);
     else console.log('[wait-clickable]', dane);
   };
@@ -108,12 +111,21 @@
       return '';
     };
 
+    // Diagnostyka na żywo: aktualny powód czekania w tytule karty.
+    const tytulOryginalny = document.title;
+    przywrocTytul = () => { document.title = tytulOryginalny; };
+    let ostatniTytul = null;
+
     const start = Date.now();
     let powod = '';
     for (;;) {
       try { powod = coBlokuje(); }
       catch (e) { powod = 'błąd testu: ' + ((e && e.message) || String(e)); }
       if (!powod) break;
+      if (POKAZUJ_POWOD_W_TYTULE && powod !== ostatniTytul) {
+        try { document.title = '⏳ ' + powod; } catch (_) { /* nieistotne */ }
+        ostatniTytul = powod;
+      }
       if (!bezLimitu && Date.now() - start >= MAKS_CZEKANIE_MS) break;
       if (typeof automaResetTimeout === 'function') {
         try { automaResetTimeout(); } catch (_) { /* nieistotne */ }

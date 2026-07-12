@@ -33,6 +33,9 @@
   const BUDZET_SPINNERA_MS = 8000; // po tym czasie ignorujemy wiecznie widoczny spinner
   const BUDZET_LADOWANIA_MS = 10000; // po tym czasie nie czekamy dłużej na readyState
   const INTERWAL_MS = 100;         // co ile sprawdzać warunki
+  // Klasy CSS oznaczające zablokowany element (SELEKTOR_NASTEPNY nie jest
+  // „gotowy”, dopóki ma którąś z nich):
+  const KLASY_BLOKADY = ['disabled', 'is-disabled', 'btn-disabled', 'loading', 'is-loading'];
   /* ========================== */
 
   const bezLimitu = !(MAKS_CZEKANIE_MS > 0);
@@ -132,6 +135,16 @@
         if (!widoczny(el)) return 'element niewidoczny: ' + SELEKTOR_NASTEPNY;
         if (el.disabled || el.getAttribute('aria-disabled') === 'true') {
           return 'element wyłączony (disabled): ' + SELEKTOR_NASTEPNY;
+        }
+        try {
+          if (getComputedStyle(el).pointerEvents === 'none') {
+            return 'element nieklikalny (pointer-events: none): ' + SELEKTOR_NASTEPNY;
+          }
+        } catch (_) { /* test pomijamy przy błędzie */ }
+        for (const klasa of KLASY_BLOKADY) {
+          if (el.classList && el.classList.contains(klasa)) {
+            return 'element ma klasę blokady „' + klasa + '”: ' + SELEKTOR_NASTEPNY;
+          }
         }
         try {
           const r = el.getBoundingClientRect();

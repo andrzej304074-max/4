@@ -64,10 +64,20 @@
     const czekaj = (ms) => new Promise((r) => setTimeout(r, ms));
     let przewinieto = false;
 
+    // Obsługa selektorów CSS oraz XPath (XPath zaczyna się od "/" lub "(").
+    const znajdzElement = (sel) => {
+      if (sel.charAt(0) === '/' || sel.charAt(0) === '(') {
+        return document.evaluate(
+          sel, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null
+        ).singleNodeValue;
+      }
+      return document.querySelector(sel);
+    };
+
     /** Zwraca '' gdy przycisk jest klikalny, albo opis przeszkody. */
     const coBlokuje = () => {
       let el = null;
-      try { el = document.querySelector(SELEKTOR); }
+      try { el = znajdzElement(SELEKTOR); }
       catch (_) { return 'niepoprawny selektor: ' + SELEKTOR; }
       if (!el) return 'przycisk nie istnieje';
 
@@ -83,11 +93,20 @@
 
       if (el.disabled) return 'przycisk wyłączony (disabled)';
       if (el.getAttribute('aria-disabled') === 'true') return 'przycisk wyłączony (aria-disabled)';
+      // Blokada bywa oznaczona na SAMYM przycisku albo na jego RODZICU
+      // (np. cała sekcja dostaje klasę .loading podczas wgrywania).
       for (const klasa of KLASY_BLOKADY) {
-        if (el.classList && el.classList.contains(klasa)) {
-          return 'przycisk ma klasę blokady „' + klasa + '”';
-        }
+        try {
+          if (el.closest && el.closest('.' + klasa)) {
+            return 'przycisk lub jego rodzic ma klasę blokady „' + klasa + '”';
+          }
+        } catch (_) { /* pomiń nietypową klasę */ }
       }
+      try {
+        if (el.closest && el.closest('[aria-busy="true"]')) {
+          return 'sekcja przycisku oznaczona jako zajęta (aria-busy)';
+        }
+      } catch (_) { /* nieistotne */ }
 
       try {
         const r = el.getBoundingClientRect();
